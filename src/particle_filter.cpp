@@ -46,7 +46,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     p.x = x + d_x(gen);
     p.y = y + d_y(gen);
     p.theta = theta + d_theta(gen);
-    p.weight = 1;
+    p.weight = 1.0;
 
     // add a particle to a vector of particles
     particles.push_back(p);
@@ -54,6 +54,8 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     // initialise vector of weights
     weights.push_back(p.weight);
   }
+
+  is_initialized = true;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
@@ -83,25 +85,39 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
       particle.x += velocity/yaw_rate*(sin(particle.theta + yaw_rate*delta_t) - sin(particle.theta)) + d_x(gen);
       particle.y += velocity/yaw_rate*(-cos(particle.theta + yaw_rate*delta_t) + cos(particle.theta)) + d_y(gen);
     }
-
-    // TODO: (mine) done
-    // think about (-pi; pi) normalisation
-    particle.theta = normalise_angle(particle.theta + yaw_rate*delta_t);
+    // (-pi; pi) normalisation
+    particle.theta = particle.theta + yaw_rate*delta_t;
   }
 
 }
 
-void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
-	// TODO: Find the predicted measurement that is closest to each observed measurement and assign the 
-	//   observed measurement to this particular landmark.
+void ParticleFilter::dataAssociation(std::vector<LandmarkObs>& predicted, std::vector<LandmarkObs>& observations) {
+	// TODO: done (linear search)
+  // Find the predicted measurement that is closest to each observed measurement and assign the
+	// observed measurement to this particular landmark.
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
-	//   implement this method and use it as a helper during the updateWeights phase.
+	// implement this method and use it as a helper during the updateWeights phase.
 
+  for (auto& observation : observations) {
+
+    double min_dist = std::numeric_limits<double>::max(); // initialise with "infinity"
+    int closest_id = 0;
+
+    for (auto& landmark : predicted) {
+      double distance = dist(observation.x, observation.y, landmark.x, landmark.y);
+      if (distance < min_dist) {
+        min_dist = distance;
+        closest_id = landmark.id;
+      }
+    }
+    observation.id = closest_id;
+  }
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
 		const std::vector<LandmarkObs> &observations, const Map &map_landmarks) {
-	// TODO: Update the weights of each particle using a mult-variate Gaussian distribution. You can read
+	// TODO:
+  // Update the weights of each particle using a mult-variate Gaussian distribution. You can read
 	//   more about this distribution here: https://en.wikipedia.org/wiki/Multivariate_normal_distribution
 	// NOTE: The observations are given in the VEHICLE'S coordinate system. Your particles are located
 	//   according to the MAP'S coordinate system. You will need to transform between the two systems.
@@ -111,6 +127,65 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
+  double sum_of_weights = 0.0;
+
+  for (auto& particle : particles) {
+
+    // Step 1:
+    // create a vector of observations converted to a global reference frame
+    std::vector<LandmarkObs> map_observations;
+    for (auto& observation : observations) {
+      LandmarkObs map_observation{0,0.0,0.0};
+
+      // convert observations (particle coordinates) to map coordinates:
+      map_observation.x = particle.x + observation.x * cos(particle.theta) - observation.y * sin(particle.theta);
+      map_observation.y = particle.y + observation.y * cos(particle.theta) + observation.x * sin(particle.theta);
+      map_observations.push_back(map_observation);
+    }
+
+    // Step 2:
+    // for a given particle create a vector of landmarks within a range of our sensor
+    std::vector<LandmarkObs> landmarks;
+    for (auto& map_landmark : map_landmarks.landmark_list) {
+      LandmarkObs landmark{map_landmark.id_i, map_landmark.x_f, map_landmark.y_f};
+      // if the landmark is within the sensor range we add to a landmarks vector
+      if (dist(particle.x, particle.y, landmark.x, landmark.y) < sensor_range) {
+        landmarks.push_back(landmark);
+      }
+    }
+
+    // Step 3:
+    // Create associations between landmarks and measurements converted to a global reference frame
+    dataAssociation(landmarks, map_observations);
+
+    // Step 4:
+    // Assign weight to a given particle
+    double std_x = std_landmark[0];
+    double std_y = std_landmark[1];
+
+    for (auto& observation : map_observations) {
+      LandmarkObs correct_lmrk{0, 0.0, 0.0};
+      // find landmark with the right id number
+      for (auto& landmark : landmarks) {
+        if (landmark.id == observation.id) {
+          correct_lmrk = landmark;
+        }
+      }
+      particle.weight *= norm_pdf_2d(observation.x, observation.y, correct_lmrk.x, correct_lmrk.y, std_x, std_y);
+    }
+    sum_of_weights += particle.weight;
+  }
+
+  // Step 5:
+  // update weights and normalise them
+  for (auto& particle : particles) {
+    particle.weight /= sum_of_weights;
+  }
+  for (int i=0; i < num_particles; i++) {
+    weights[i] = particles[i].weight;
+  }
+
 }
 
 void ParticleFilter::resample() {
@@ -118,6 +193,13 @@ void ParticleFilter::resample() {
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
 
+  std::discrete_distribution<int> d(weights.begin(), weights.end());
+  std::default_random_engine gen;
+
+  auto temp = particles;
+  for (auto& particle : particles) {
+    particle = temp[d(gen)];
+  }
 }
 
 Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<int>& associations, 

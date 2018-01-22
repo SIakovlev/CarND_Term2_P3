@@ -242,6 +242,7 @@ inline bool read_landmark_data(std::string filename, std::vector<LandmarkObs>& o
 }
 
 inline double normalise_angle(double angle) {
+
 	if (angle > M_PI) {
 		return angle - 2*M_PI;
 	} else if (angle < M_PI) {
@@ -249,6 +250,13 @@ inline double normalise_angle(double angle) {
 	} else {
 		return angle;
 	}
+}
+
+inline double norm_pdf_2d(double x, double y,
+                          double mu_x, double mu_y,
+                          double std_x, double std_y) {
+  double exp_term = pow((x-mu_x), 2)/(2*std_x*std_x) + pow((y-mu_y), 2)/(2*std_y*std_y);
+  return 1.0/(2.0*M_PI*std_x*std_y) * exp( -exp_term );
 }
 
 #endif /* HELPER_FUNCTIONS_H_ */
