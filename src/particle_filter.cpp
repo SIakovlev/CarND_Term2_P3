@@ -36,7 +36,6 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   std::normal_distribution<double> d_x(0, std_x);
   std::normal_distribution<double> d_y(0, std_y);
   std::normal_distribution<double> d_theta(0, std_theta);
-  std::default_random_engine gen;
 
   for (int i = 0; i < num_particles; i++) {
 
@@ -76,21 +75,21 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
   std::normal_distribution<double> d_x(0, std_x);
   std::normal_distribution<double> d_y(0, std_y);
   std::normal_distribution<double> d_theta(0, std_theta);
-  std::default_random_engine gen;
 
-  double eps = 0.01;
+  double eps = 0.0001;
 
   for (auto& particle : particles) {
+    double theta = particle.theta;
     // process the case of small yaw rate
     if (yaw_rate < eps) {
-      particle.x += velocity*cos(particle.theta)*delta_t + d_x(gen);
-      particle.y += velocity*sin(particle.theta)*delta_t + d_y(gen);
+      particle.x += velocity*cos(theta)*delta_t + d_x(gen);
+      particle.y += velocity*sin(theta)*delta_t + d_y(gen);
     } else {
-      particle.x += velocity/yaw_rate*(sin(particle.theta + yaw_rate*delta_t) - sin(particle.theta)) + d_x(gen);
-      particle.y += velocity/yaw_rate*(-cos(particle.theta + yaw_rate*delta_t) + cos(particle.theta)) + d_y(gen);
+      particle.x += velocity/yaw_rate*(sin(theta + yaw_rate*delta_t) - sin(theta)) + d_x(gen);
+      particle.y += velocity/yaw_rate*(-cos(theta + yaw_rate*delta_t) + cos(theta)) + d_y(gen);
     }
     // (-pi; pi) normalisation
-    particle.theta = particle.theta + yaw_rate*delta_t + d_theta(gen);
+    particle.theta = theta + yaw_rate*delta_t + d_theta(gen);
   }
 
 
@@ -113,6 +112,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs>& predicted,
   auto start = std::chrono::high_resolution_clock::now();
   std::vector<std::pair<double, double>> temp_x;
   std::vector<std::pair<double, double>> temp_y;
+  std::vector<int> assosiations;
 
   for (auto& observation : observations) {
     double min_dist = std::numeric_limits<double>::max(); // initialise with "infinity"
@@ -127,10 +127,12 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs>& predicted,
     }
     temp_x.emplace_back(observation.x, closest_lmrk.x);
     temp_y.emplace_back(observation.y, closest_lmrk.y);
+    assosiations.push_back(closest_lmrk.id);
   }
 
   particle.sense_x = temp_x;
   particle.sense_y = temp_y;
+  particle.associations = assosiations;
 
   auto finish = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(finish - start) ;
@@ -141,7 +143,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs>& predicted,
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
 		const std::vector<LandmarkObs> &observations, const Map &map_landmarks) {
-	// TODO:
+  // TODO: done
   // Update the weights of each particle using a mult-variate Gaussian distribution. You can read
 	//   more about this distribution here: https://en.wikipedia.org/wiki/Multivariate_normal_distribution
 	// NOTE: The observations are given in the VEHICLE'S coordinate system. Your particles are located
@@ -167,9 +169,10 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     // and transform them to map coordinates:
     std::vector<LandmarkObs> map_observations;
     for (auto& observation : observations) {
+      double theta = particle.theta;
       LandmarkObs map_observation{0,0.0,0.0};
-      map_observation.x = particle.x + observation.x * cos(particle.theta) - observation.y * sin(particle.theta);
-      map_observation.y = particle.y + observation.y * cos(particle.theta) + observation.x * sin(particle.theta);
+      map_observation.x = particle.x + observation.x * cos(theta) - observation.y * sin(theta);
+      map_observation.y = particle.y + observation.y * cos(theta) + observation.x * sin(theta);
       map_observations.push_back(map_observation);
     }
 
@@ -194,12 +197,18 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     double std_y = std_landmark[1];
 
     particle.weight = 1.0;
+
+    double C =  1.0/(2.0*M_PI*std_x*std_y);
+
     for (int i=0; i < particle.sense_x.size(); ++i) {
       double obs_x = particle.sense_x[i].first;
       double lmrk_x = particle.sense_x[i].second;
       double obs_y = particle.sense_y[i].first;
       double lmrk_y = particle.sense_y[i].second;
-      particle.weight *= norm_pdf_2d(obs_x, obs_y, lmrk_x, lmrk_y, std_x, std_y);
+
+      double exp_term = -(obs_x-lmrk_x)*(obs_x-lmrk_x)/(2*std_x*std_x) - (obs_y-lmrk_y)*(obs_y-lmrk_y)/(2*std_y*std_y);
+
+      particle.weight *= C * exp(exp_term);
     }
 
     sum_of_weights += particle.weight;
@@ -220,18 +229,16 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 }
 
 void ParticleFilter::resample() {
-	// TODO: Resample particles with replacement with probability proportional to their weight. 
+	// TODO: done
+  // Resample particles with replacement with probability proportional to their weight.
 	// NOTE: You may find std::discrete_distribution helpful here.
-	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+	// http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
 
   std::discrete_distribution<int> d(weights.begin(), weights.end());
-  std::default_random_engine gen;
-
   //auto temp = particles;
   for (auto& particle : particles) {
     particle = particles[d(gen)];
   }
-
   call_number += 1;
 }
 
