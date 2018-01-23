@@ -3,6 +3,7 @@
 #include "json.hpp"
 #include <math.h>
 #include "particle_filter.h"
+#include <chrono>
 
 using namespace std;
 
@@ -63,7 +64,7 @@ int main()
 
       if (event == "telemetry") {
         // j[1] is the data JSON object
-
+        auto start = std::chrono::high_resolution_clock::now();
 
         if (!pf.initialized()) {
 
@@ -80,6 +81,10 @@ int main()
 
           pf.prediction(delta_t, sigma_pos, previous_velocity, previous_yawrate);
         }
+
+        auto t1 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> t = t1 - start;
+        std::cout << "Point 1. Time elapsed: " << t.count() << std::endl;
 
         // receive noisy observation data from the simulator
         // sense_observations in JSON format [{obs_x,obs_y},{obs_x,obs_y},...{obs_x,obs_y}]
@@ -109,9 +114,19 @@ int main()
           noisy_observations.push_back(obs);
         }
 
+        auto t2 = std::chrono::high_resolution_clock::now();
+        t = t2 - start;
+        std::cout << "Point 2. Time elapsed: " << t.count() << std::endl;
+
         // Update the weights and resample
+
         pf.updateWeights(sensor_range, sigma_landmark, noisy_observations, map);
         pf.resample();
+
+        //auto finish = std::chrono::high_resolution_clock::now();
+        //std::chrono::duration<double> time_elapsed = finish - start;
+        //std::cout << "Particle filter time elapsed: " << time_elapsed.count() << std::endl;
+        //std::cout << "Call number: " << pf.callNum() << std::endl;
 
         // Calculate and output the average weighted error of the particle filter over all time steps so far.
         vector<Particle> particles = pf.particles;
@@ -120,11 +135,11 @@ int main()
         Particle best_particle;
         double weight_sum = 0.0;
         for (int i = 0; i < num_particles; ++i) {
-        if (particles[i].weight > highest_weight) {
-          highest_weight = particles[i].weight;
-          best_particle = particles[i];
-        }
-        weight_sum += particles[i].weight;
+          if (particles[i].weight > highest_weight) {
+            highest_weight = particles[i].weight;
+            best_particle = particles[i];
+          }
+          weight_sum += particles[i].weight;
         }
         cout << "highest w " << highest_weight << endl;
         cout << "average w " << weight_sum/num_particles << endl;
@@ -142,7 +157,11 @@ int main()
           auto msg = "42[\"best_particle\"," + msgJson.dump() + "]";
           // std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-	  
+
+          auto t3 = std::chrono::high_resolution_clock::now();
+          t = t3 - start;
+          std::cout << "Point 3. Time elapsed: " << t.count() << std::endl;
+
         }
       } else {
         std::string msg = "42[\"manual\",{}]";

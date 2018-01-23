@@ -19,13 +19,16 @@ struct Particle {
 	double theta;
 	double weight;
 	std::vector<int> associations;
-	std::vector<double> sense_x;
-	std::vector<double> sense_y;
+	std::vector<std::pair<double, double>> sense_x;
+	std::vector<std::pair<double, double>> sense_y;
 };
 
 
 
 class ParticleFilter {
+
+  // debug variable showing how many calls passed
+  long long call_number;
 	
 	// Number of particles to draw
 	int num_particles;
@@ -37,13 +40,15 @@ class ParticleFilter {
 	std::vector<double> weights;
 	
 public:
-	
+
+  long long callNum();
+
 	// Set of current particles
 	std::vector<Particle> particles;
 
 	// Constructor
 	// @param num_particles Number of particles
-	ParticleFilter() : num_particles(0), is_initialized(false) {}
+	ParticleFilter() : num_particles(0), is_initialized(false), call_number(0) {}
 
 	// Destructor
 	~ParticleFilter() {}
@@ -75,8 +80,9 @@ public:
 	 *   a nearest-neighbors data association).
 	 * @param predicted Vector of predicted landmark observations
 	 * @param observations Vector of landmark observations
+	 * @param particle - reference to a current particle
 	 */
-	void dataAssociation(std::vector<LandmarkObs>& predicted, std::vector<LandmarkObs>& observations);
+	void dataAssociation(std::vector<LandmarkObs>& predicted, std::vector<LandmarkObs>& observations, Particle& particle);
 	
 	/**
 	 * updateWeights Updates the weights for each particle based on the likelihood of the 
